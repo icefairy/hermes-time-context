@@ -198,6 +198,57 @@ HERMES_REPO=~/hermes-agent python tests/e2e_check.py
 `e2e_check.py` 会断言：system 与历史消息未被改动、`cache_control` 保留、
 第二轮出现「距上一轮」、`tool_result` 轮不注入。
 
+## 生态背景：Mizar · 璇玑 · Hermes
+
+`hermes-time-context` 并不是孤立的项目，它诞生于一套面向多 agent 协同的自研体系：
+
+### [Mizar（开阳）](https://github.com/icefairy/mizar)
+
+北斗第六星 —— 极简、零依赖、单文件、可自举的 AI Agent 框架。
+
+- **单二进制**：~20-30MB，无运行时依赖，无需 npm / Python / Docker
+- **插件即脚本**：`.ts` 内嵌 esbuild 编译、`.js` 直跑 goja，热重载无需重启
+- **技能即 Markdown**：兼容 Anthropic / Hermes 第三方技能生态
+- **工具即 MCP**：接入任意 MCP 服务器
+- **可自举**：Agent 自行编写插件并扩展自身能力
+
+与 Hermes 互补：Mizar 是「独立 agent 本体」，Hermes 是「多通道集成终端」；两者共享同一批 SKILL.md 技能，可无缝切换或组合使用。
+
+### [璇玑（Xuanji）](https://github.com/icefairy/xuanji)
+
+北斗一二星 —— Go 单二进制 + SQLite 的轻量 AI 协议网关，OpenAI / Anthropic 双入口。
+
+- **多上游汇聚**：vLLM、硅基流动、商汤、DeepSeek 中转、OpenRouter、Ollama、MiMo TTS …… 统一一个入口
+- **自动分流**：按计费层级（免费 / 包月 / 按量）+ 权重 + 优惠时段 + 延迟智能路由
+- **故障切换 + 熔断恢复**：按上游独立健康探测，2xx / 全部 4xx 算“在线”，仅 5xx / 超时判死；客户端断连不拉黑
+- **协议归一**：对上游私有扩展做归一化（如 DeepSeek 思考等级映射、reasoning_content 缓存回传）
+- **配置热重载**：管理页 CRUD → SQLite → reload，在途请求用旧配置、新请求用新
+
+与 `hermes-time-context` 协作：插件把时间戳加在 user 消息上，请求经璇玑网关转发到上游，命中缓存并正确携带时间语义。两者配合才能让「时间感知」这条信息稳定抵达最终模型。
+
+### 三者关系
+
+```
+用户 ──► Hermes (MCP / 插件生态) ──► 璇玑网关 ──► 各上游模型
+              │
+              └──► Mizar (独立 Agent / 技能复用)
+```
+
+| 层次 | 项目 | 角色 |
+| --- | --- | --- |
+| 入口 | Hermes / Mizar | 用户交互、插件/技能扩展 |
+| 路由 | 璇玑网关 | 多上游汇聚、自动分流、协议归一 |
+| 增强 | `hermes-time-context` | 单点修补——让跨天会话的时间语义不被丢 |
+
+---
+
 ## License
 
 Apache-2.0
+
+## 在线文档
+
+GitHub Pages 版本（含交互体验与浅色/深色主题切换）：
+https://icefairy.github.io/hermes-time-context/
+
+开启方式：仓库 Settings → Pages → Source 选 `main` 分支根目录。

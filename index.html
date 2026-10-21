@@ -175,7 +175,7 @@
       历史前缀逐字节不变，<strong>上游缓存照常命中</strong>。
     </p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/" id="repo-link">★ 在 GitHub 上查看</a>
+      <a class="btn primary" href="https://github.com/icefairy/hermes-time-context" id="repo-link">★ 在 GitHub 上查看</a>
       <a class="btn" href="#install">安装（2 步）</a>
       <a class="btn" href="#cost">缓存代价说明</a>
     </div>
@@ -317,7 +317,7 @@
       <li>
         放进插件目录
         <pre><span class="c"># 克隆后复制到 Hermes 插件目录</span>
-git clone https://github.com/<span class="s">&lt;you&gt;</span>/hermes-time-context.git
+git clone https://github.com/<span class="s">icefairy</span>/hermes-time-context.git
 cp -r hermes-time-context ~/.hermes/plugins/time-context</pre>
       </li>
       <li>
@@ -417,7 +417,60 @@ cp -r hermes-time-context ~/.hermes/plugins/time-context</pre>
 
 <section>
   <div class="wrap">
-    <h2><span class="num">09</span>已知边界</h2>
+    <h2><span class="num">09</span>生态背景：Mizar · 璇玑 · Hermes</h2>
+    <p>
+      <code>hermes-time-context</code> 并不是孤立的项目，它诞生于一套面向多 agent 协同的自研体系，
+      命名皆取北斗七星：<strong>Mizar（开阳）</strong> 是第六星，<strong>璇玑（Xuanji）</strong> 是北斗一二星（枢纽之意）。
+    </p>
+
+    <h3>Mizar（开阳）</h3>
+    <p>
+      <a href="https://github.com/icefairy/mizar">GitHub</a> · <strong>极简、零依赖、单文件、可自举</strong> 的 AI Agent 框架。
+    </p>
+    <ul>
+      <li><strong>单二进制</strong>：~20-30MB，无运行时依赖，无需 npm / Python / Docker</li>
+      <li><strong>插件即脚本</strong>：.ts 内嵌 esbuild 编译、.js 直跑 goja，热重载无需重启</li>
+      <li><strong>技能即 Markdown</strong>：兼容 Anthropic / Hermes 第三方技能生态</li>
+      <li><strong>工具即 MCP</strong>：接入任意 MCP 服务器</li>
+      <li><strong>可自举</strong>：Agent 自行编写插件并扩展自身能力</li>
+    </ul>
+    <p>Hermes 是「多通道集成终端」，Mizar 是「独立 agent 本体」；两者共享同一批 SKILL.md 技能，可无缝切换或组合使用。</p>
+
+    <h3>璇玑（Xuanji）</h3>
+    <p>
+      <a href="https://github.com/icefairy/xuanji">GitHub</a> · Go 单二进制 + SQLite 的<strong>轻量 AI 协议网关</strong>，OpenAI / Anthropic 双入口。
+    </p>
+    <ul>
+      <li><strong>多上游汇聚</strong>：vLLM、硅基流动、商汤、DeepSeek 中转、OpenRouter、Ollama、MiMo TTS …… 统一一个入口</li>
+      <li><strong>自动分流</strong>：按计费层级（免费 / 包月 / 按量）+ 权重 + 优惠时段 + 延迟智能路由</li>
+      <li><strong>故障切换 + 熔断恢复</strong>：按上游独立健康探测，2xx / 全部 4xx 算“在线”，仅 5xx / 超时判死；客户端断连不拉黑</li>
+      <li><strong>协议归一</strong>：对上游私有扩展做归一化（如 DeepSeek 思考等级映射、reasoning_content 缓存回传）</li>
+      <li><strong>配置热重载</strong>：管理页 CRUD → SQLite → reload，在途请求用旧配置、新请求用新</li>
+    </ul>
+
+    <h3>三者关系</h3>
+    <pre><span class="c"># 请求路径（简化）</span>
+用户 ──► Hermes (MCP / 插件生态) ──► 璇玑网关 ──► 各上游模型
+            │
+            └──► Mizar (独立 Agent / 技能复用)
+</pre>
+    <table>
+      <thead><tr><th>层次</th><th>项目</th><th>角色</th></tr></thead>
+      <tbody>
+        <tr><td>入口</td><td>Hermes / Mizar</td><td>用户交互、插件 / 技能扩展</td></tr>
+        <tr><td>路由</td><td>璇玑网关</td><td>多上游汇聚、自动分流、协议归一</td></tr>
+        <tr><td>增强</td><td><code>hermes-time-context</code></td><td>单点修补——让跨天会话的时间语义不被丢</td></tr>
+      </tbody>
+    </table>
+    <p>
+      插件把时间戳加在 user 消息上，请求经璇玑网关转发到上游，命中缓存并正确携带时间语义。
+      三者配合才能让「时间感知」这条信息稳定抵达最终模型。
+    </p>
+  </div>
+</section>
+<section>
+  <div class="wrap">
+    <h2><span class="num">10</span>已知边界</h2>
     <p>
       <strong>只影响发往模型的内容</strong>——终端里显示的仍是你的原文（这是设计，不是 bug）。
       上下文压缩后的摘要轮同样会注入时间，这是期望行为。
@@ -431,7 +484,7 @@ cp -r hermes-time-context ~/.hermes/plugins/time-context</pre>
 <footer>
   <div class="wrap">
     <p>
-      <a href="https://github.com/" id="repo-link-2">GitHub 仓库</a> ·
+      <a href="https://github.com/icefairy/hermes-time-context" id="repo-link-2">GitHub 仓库</a> ·
       <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> ·
       Apache-2.0
     </p>
@@ -439,13 +492,9 @@ cp -r hermes-time-context ~/.hermes/plugins/time-context</pre>
 </footer>
 
 <script>
-  // 仓库地址集中一处：发到 GitHub 后只改这里（或直接改上面的链接）
   (function () {
-    var REPO = "https://github.com/icefairy/hermes-time-context";
-    if (REPO.indexOf("<you>") === -1) {
-      document.getElementById("repo-link").href = REPO;
-      document.getElementById("repo-link-2").href = REPO;
-    }
+    document.getElementById("repo-link").href = "https://github.com/icefairy/hermes-time-context";
+    document.getElementById("repo-link-2").href = "https://github.com/icefairy/hermes-time-context";
   })();
 </script>
 
