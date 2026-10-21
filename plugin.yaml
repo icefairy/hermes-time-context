@@ -1,0 +1,47 @@
+name: time-context
+version: 1.0.0
+manifest_version: 2
+description: 给发往模型的本轮用户消息注入现实时间（可含与上一轮的间隔），让模型能感知跨天/跨周的断档；并观测每次请求的缓存命中率。不修改持久化会话与系统提示词。
+author: icefairy
+kind: standalone
+license: Apache-2.0
+tags: [context, prompt-cache, time]
+config_schema:
+  enabled:
+    type: bool
+    default: true
+    description: 总开关
+  format:
+    type: str
+    default: "【当前时间】{datetime} {weekday}（{tz}）"
+    description: 时间前缀模板，可用变量 {datetime} {date} {time} {weekday} {tz}
+  date_format:
+    type: str
+    default: "%Y-%m-%d %H:%M"
+    description: strftime 日期时间格式
+  tz:
+    type: str
+    default: "Asia/Shanghai"
+    description: 时区（IANA 名，如 Asia/Shanghai、UTC）
+  gap_enabled:
+    type: bool
+    default: true
+    description: 距上一轮超过阈值时追加间隔说明
+  gap_threshold_minutes:
+    type: int
+    default: 30
+    description: 间隔阈值（分钟），低于该值不追加间隔说明
+  inject_on_first_turn:
+    type: bool
+    default: true
+    description: 首轮是否也注入时间
+  only_last_user_message:
+    type: bool
+    default: true
+    description: 只改最后一条 user 消息（推荐；关掉会改写全部 user 消息，破坏历史前缀缓存）
+  min_gap_tokens_alert:
+    type: float
+    default: 0.0
+    description: >-
+      缓存命中率告警阈值（0~1，0 表示关闭）。每次 post_api_request 统计
+      "首 token 未命中比例"，超过阈值写日志 /time-context stats 可查。

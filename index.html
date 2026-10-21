@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hermes-time-context · 让 Hermes 感知时间</title>
+<meta name="description" content="给 Hermes 的多轮对话注入现实时间与轮次间隔，缓存零代价的 Hermes 插件。">
+<meta property="og:title" content="hermes-time-context">
+<meta property="og:description" content="让 Hermes 的模型知道现在几点，以及你上次说话是多久以前。">
+<meta property="og:type" content="website">
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #12161b;
+    --panel-2: #171c22;
+    --line: #232a33;
+    --fg: #e6e9ef;
+    --fg-dim: #9aa4b2;
+    --fg-faint: #6b7684;
+    --accent: #6ee7b7;
+    --accent-2: #7dd3fc;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --max: 900px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #fbfcfd;
+      --panel: #ffffff;
+      --panel-2: #f4f6f8;
+      --line: #e2e6ea;
+      --fg: #1a2028;
+      --fg-dim: #55606d;
+      --fg-faint: #8b96a3;
+      --accent: #0f9d63;
+      --accent-2: #0b7fb8;
+      --warn: #b45309;
+      --bad: #c0392b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.75 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+
+  header.hero { padding: 88px 0 40px; border-bottom: 1px solid var(--line); }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .badge {
+    font-size: 12px; letter-spacing: .02em; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--fg-dim); background: var(--panel);
+  }
+  .badge b { color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.15; margin: 0 0 16px; letter-spacing: -.02em; }
+  h1 code { font-size: .82em; color: var(--accent); }
+  .lede { font-size: clamp(17px, 2vw, 20px); color: var(--fg-dim); margin: 0 0 28px; max-width: 66ch; }
+  .lede strong { color: var(--fg); font-weight: 600; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 10px;
+    border: 1px solid var(--line); color: var(--fg); background: var(--panel);
+    font-weight: 600; font-size: 15px; transition: .15s;
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #04150f; }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  h2 { font-size: 24px; margin: 0 0 8px; letter-spacing: -.01em; }
+  h2 .num { color: var(--fg-faint); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  h3 { font-size: 17px; margin: 32px 0 8px; }
+  p { color: var(--fg-dim); }
+  p strong, li strong { color: var(--fg); }
+
+  /* 对话气泡 */
+  .chat { display: grid; gap: 12px; margin: 24px 0; }
+  .bubble {
+    padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--panel); max-width: 86%;
+  }
+  .bubble .who { font-size: 12px; color: var(--fg-faint); margin-bottom: 4px; letter-spacing: .03em; }
+  .bubble.user { justify-self: start; }
+  .bubble.ai { justify-self: end; background: var(--panel-2); }
+  .bubble .stamp { color: var(--accent); font-size: 13px; }
+  .bubble .wrong { color: var(--bad); }
+
+  pre {
+    margin: 16px 0; padding: 16px 18px; border-radius: 12px; overflow-x: auto;
+    background: var(--panel); border: 1px solid var(--line);
+    font: 13.5px/1.7 "JetBrains Mono", "Fira Code", "SF Mono", Menlo, Consolas, monospace;
+    color: var(--fg);
+  }
+  code { font-family: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, Consolas, monospace; }
+  :not(pre) > code {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 1px 6px; font-size: .88em; color: var(--accent);
+  }
+  pre .c { color: var(--fg-faint); }
+  pre .k { color: var(--accent-2); }
+  pre .s { color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--fg-faint); font-weight: 600; font-size: 13px; letter-spacing: .03em; }
+  td { color: var(--fg-dim); }
+  td strong { color: var(--fg); }
+  tr:last-child td { border-bottom: none; }
+  .ok { color: var(--accent); font-weight: 600; }
+  .no { color: var(--bad); font-weight: 600; }
+  .mid { color: var(--warn); font-weight: 600; }
+
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin: 24px 0; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+  }
+  .card h4 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 0; font-size: 14px; }
+  .card .ico { font-size: 18px; margin-bottom: 8px; display: block; }
+
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 20px 0; }
+  ol.steps > li {
+    counter-increment: s; position: relative; padding-left: 40px; margin-bottom: 18px; color: var(--fg-dim);
+  }
+  ol.steps > li::before {
+    content: counter(s); position: absolute; left: 0; top: 2px;
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--accent);
+    font-size: 13px; font-weight: 700;
+  }
+  .note {
+    border-left: 3px solid var(--warn); background: var(--panel); border-radius: 0 10px 10px 0;
+    padding: 12px 16px; margin: 20px 0; font-size: 14.5px; color: var(--fg-dim);
+  }
+  .note strong { color: var(--warn); }
+  .flow { margin: 20px 0; }
+  .flow-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 14px; margin-bottom: 6px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--panel); font-size: 14px;
+    color: var(--fg-dim);
+  }
+  .flow-row.hl {
+    border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel));
+    color: var(--fg); font-weight: 600;
+  }
+  .flow-row .tag { margin-left: auto; font-size: 12px; color: var(--fg-faint); font-weight: 400; }
+  .flow-row.hl .tag { color: var(--accent); }
+
+  footer { padding: 40px 0 64px; color: var(--fg-faint); font-size: 14px; }
+  footer a { color: var(--fg-dim); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="badges">
+      <span class="badge">Hermes Plugin</span>
+      <span class="badge"><b>0</b> 依赖</span>
+      <span class="badge">缓存代价 <b>≈ 0</b></span>
+      <span class="badge">Apache-2.0</span>
+    </div>
+    <h1>让 Hermes 的模型知道<br><code>现在几点</code>，以及你上次说话是几小时前</h1>
+    <p class="lede">
+      多轮对话里消息本身不带时间。你隔了一天再接着说，模型却以为还是<strong>“刚才”</strong>。
+      <code>hermes-time-context</code> 在发给模型的最后一条用户消息前，加一行现实时间与轮次间隔——
+      历史前缀逐字节不变，<strong>上游缓存照常命中</strong>。
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/" id="repo-link">★ 在 GitHub 上查看</a>
+      <a class="btn" href="#install">安装（2 步）</a>
+      <a class="btn" href="#cost">缓存代价说明</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">01</span>问题长什么样</h2>
+    <p>没有时间信息时，模型会把跨越一整天的两句话当成连续对话：</p>
+
+    <div class="chat">
+      <div class="bubble user">
+        <div class="who">你 · 10月1日 09:00</div>
+        帮我看下这个脚本为什么报错
+      </div>
+      <div class="bubble ai">
+        <div class="who">AI</div>
+        从报错看，可能是环境变量没设置。
+      </div>
+      <div class="bubble user">
+        <div class="who">你 · 10月2日 15:30</div>
+        改好了，但还有个小问题
+      </div>
+      <div class="bubble ai">
+        <div class="who">AI</div>
+        <span class="wrong">好的，基于刚才的报错信息……</span> ← 它以为还是“刚才”
+      </div>
+    </div>
+
+    <p>装上插件之后，模型看到的是：</p>
+    <pre><span class="stamp" style="color:var(--accent)">【当前时间】2026-10-02 15:30 周五（Asia/Shanghai）｜距上一轮：1 天 6 小时</span>
+改好了，但还有个小问题</pre>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">02</span>特性</h2>
+    <div class="grid">
+      <div class="card">
+        <span class="ico">🕐</span>
+        <h4>现实时间</h4>
+        <p>北京时间或任意 IANA 时区，前缀模板与 strftime 格式都可自定义。</p>
+      </div>
+      <div class="card">
+        <span class="ico">⏱️</span>
+        <h4>间隔感知</h4>
+        <p>超过阈值的断档自动标注「距上一轮：1 天 6 小时」，阈值以下不啰嗦。</p>
+      </div>
+      <div class="card">
+        <span class="ico">🧠</span>
+        <h4>缓存友好</h4>
+        <p>只改最后一条用户消息。历史前缀字节不变，上游前缀缓存继续命中。</p>
+      </div>
+      <div class="card">
+        <span class="ico">🔒</span>
+        <h4>零侵入</h4>
+        <p>不碰系统提示词、不改持久化历史、不动 assistant 与 tool 消息。</p>
+      </div>
+      <div class="card">
+        <span class="ico">📊</span>
+        <h4>自带观测</h4>
+        <p><code>/time-context stats</code> 统计命中率，用数据证明缓存没被伤到。</p>
+      </div>
+      <div class="card">
+        <span class="ico">🪶</span>
+        <h4>纯标准库</h4>
+        <p>零第三方依赖；<code>zoneinfo</code> 缺失时自动回退 UTC+8。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="cost">
+  <div class="wrap">
+    <h2><span class="num">03</span>为什么不做在网关层？</h2>
+    <p>
+      第一反应往往是“在 API 网关里统一加个时间戳不就完了”。这行不通——原因不在于能不能加，
+      而在于<strong>网关根本不知道正确的值</strong>。
+    </p>
+
+    <table>
+      <thead>
+        <tr><th></th><th>网关层</th><th>插件层（本方案）</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>知道“上次交互是什么时候”</td><td class="no">✗ 只知道本次请求时间</td><td class="ok">✓ 按 session 记录真实间隔</td></tr>
+        <tr><td>区分“用户说的话”与“工具返回”</td><td class="no">✗ 很多协议里都是 <code>role=user</code></td><td class="ok">✓ 能，结构化判断</td></tr>
+        <tr><td>会污染历史消息吗</td><td class="mid">△ 若逐条加就会</td><td class="ok">✓ 只改最后一条</td></tr>
+        <tr><td>耦合 Hermes 私有会话库</td><td class="mid">△ 只能解析库格式</td><td class="ok">✓ 用框架公开扩展面</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      还有个细节：Hermes 的消息在数据库里<strong>其实带 <code>timestamp</code></strong>，
+      但它在 <code>PERSISTENCE_ONLY_MESSAGE_FIELDS</code> 里，发往模型前会被剥掉。
+      网关侧要拿到它，只能去解析 Hermes 私有的会话库格式——耦合度一下就上去了。
+    </p>
+    <p>
+      这也正是 Hermes 官方把注入点定在「当前轮 user 消息」而非系统提示词的同一个理由：
+      <strong>system prompt 保持字节稳定，缓存才成立</strong>。
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">04</span>缓存代价 ≈ 0</h2>
+    <p>上游前缀缓存按 token <strong>逐字节</strong>比对前缀。任何位置变了，该位置之后全部失效。</p>
+
+    <table>
+      <thead>
+        <tr><th>注入位置</th><th>结果</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>系统提示词开头（“Current time: …”）</td><td class="no">💀 每次请求前缀全变，命中率归零</td></tr>
+        <tr><td><strong>每条</strong> user 消息前</td><td class="no">💀 历史前缀作废，等于每轮重建</td></tr>
+        <tr><td><code>role=user</code> 的工具结果上</td><td class="no">💀 污染工具输出语义 + 破坏断点</td></tr>
+        <tr><td><strong>只加最后一条 user 消息</strong></td><td class="ok">✅ 历史逐字节不变，只多几十 token prefill</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <strong>易忽略的细节：</strong>Anthropic 系的缓存断点（<code>cache_control</code>）最多 4 个，
+      Hermes 默认放在「system 静态前缀 / system 末尾 / 最后 2~3 条消息」。
+      如果给<strong>每条</strong> user 消息都加时间戳，这些断点会被不断刷新，效果等同于每轮冷启动。
+      所以 <code>only_last_user_message</code> 默认开启，且建议保持开启。
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2><span class="num">05</span>安装（2 步）</h2>
+    <ol class="steps">
+      <li>
+        放进插件目录
+        <pre><span class="c"># 克隆后复制到 Hermes 插件目录</span>
+git clone https://github.com/<span class="s">&lt;you&gt;</span>/hermes-time-context.git
+cp -r hermes-time-context ~/.hermes/plugins/time-context</pre>
+      </li>
+      <li>
+        在 <code>$HERMES_HOME/config.yaml</code> 的 <code>plugins.enabled</code> 里加一行
+        <pre><span class="k">plugins:</span>
+  <span class="k">enabled:</span>
+    - time-context
+    <span class="c"># ... 你已有的其他插件</span></pre>
+        然后<strong>重启 Hermes 进程</strong>（网关 <code>supervisorctl restart &lt;worker&gt;</code>，CLI 退出重进）。
+      </li>
+    </ol>
+
+    <div class="note">
+      <strong>注意：</strong>Hermes 的插件是 <strong>opt-in</strong> 的——只把目录放进去不会生效，
+      必须在 <code>plugins.enabled</code> 里显式列出，否则日志会出现
+      <code>not enabled in config</code>。目录名必须叫 <code>time-context</code>，与
+      <code>plugin.yaml</code> 的 <code>name</code> 一致。
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">06</span>配置</h2>
+    <p>写在 <code>config.yaml</code> → <code>plugins.entries.time-context.settings</code>。所有键都在 <code>plugin.yaml</code> 的 <code>config_schema</code> 里声明过，Desktop 的插件设置页会渲染成表单。</p>
+
+    <pre><span class="k">plugins:</span>
+  <span class="k">entries:</span>
+    <span class="k">time-context:</span>
+      <span class="k">settings:</span>
+        tz: Asia/Shanghai
+        gap_threshold_minutes: 30
+        min_gap_tokens_alert: 0.3</pre>
+
+    <table>
+      <thead><tr><th>键</th><th>默认</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>enabled</code></td><td><code>true</code></td><td>总开关</td></tr>
+        <tr><td><code>format</code></td><td><code>【当前时间】{datetime} {weekday}（{tz}）</code></td><td>模板；可用 <code>{datetime}</code> <code>{date}</code> <code>{time}</code> <code>{weekday}</code> <code>{tz}</code></td></tr>
+        <tr><td><code>date_format</code></td><td><code>%Y-%m-%d %H:%M</code></td><td>strftime 格式</td></tr>
+        <tr><td><code>tz</code></td><td><code>Asia/Shanghai</code></td><td>IANA 时区；<code>zoneinfo</code> 不可用时回退 UTC+8</td></tr>
+        <tr><td><code>gap_enabled</code></td><td><code>true</code></td><td>是否追加「距上一轮」</td></tr>
+        <tr><td><code>gap_threshold_minutes</code></td><td><code>30</code></td><td>低于该间隔不追加（避免每轮都提示“刚刚”）</td></tr>
+        <tr><td><code>inject_on_first_turn</code></td><td><code>true</code></td><td>新会话首轮是否也注入</td></tr>
+        <tr><td><code>only_last_user_message</code></td><td><code>true</code></td><td><strong>保持开启</strong>，关闭会让历史缓存作废</td></tr>
+        <tr><td><code>min_gap_tokens_alert</code></td><td><code>0.0</code></td><td>&gt;0 时，未命中比例超阈值的请求写一条日志（0 = 关闭）</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">07</span>怎么用</h2>
+    <p>安装后在会话里直接用斜杠命令：</p>
+    <pre>/time-context status     <span class="c"># 当前配置、已记录的会话数</span>
+/time-context preview    <span class="c"># 试算三种间隔下的前缀长什么样</span>
+/time-context stats      <span class="c"># 本进程缓存命中统计</span>
+/time-context test 90    <span class="c"># 按“隔 90 分钟”试算一次</span></pre>
+
+    <p><code>stats</code> 的输出大致是：</p>
+    <pre>time-context 缓存观测（本进程累计）
+  请求数：42
+  prompt tokens：1,284,930
+  命中缓存 tokens：1,201,447（<span class="s">93.5%</span>）
+  未命中偏高告警次数：0</pre>
+    <p>跑几轮后这个数字应稳定在 90% 以上（取决于历史长度与上游）。若明显下降，先检查 <code>only_last_user_message</code> 有没有被关掉。</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">08</span>它是怎么工作的</h2>
+    <p>全部只用 Hermes 的<strong>公开扩展面</strong>，没有任何 hack：</p>
+
+    <div class="flow">
+      <div class="flow-row">messages 组装<span class="tag">Hermes</span></div>
+      <div class="flow-row">prompt-cache 装饰（放置 cache_control 断点）<span class="tag">Hermes</span></div>
+      <div class="flow-row">sanitize → api_kwargs<span class="tag">Hermes</span></div>
+      <div class="flow-row hl">llm_request 中间件 · 改写最后一条 user 消息<span class="tag">本插件</span></div>
+      <div class="flow-row">pre_api_request hook<span class="tag">Hermes</span></div>
+      <div class="flow-row">发往 provider<span class="tag">上游</span></div>
+      <div class="flow-row hl">post_api_request hook · 统计缓存桶<span class="tag">本插件</span></div>
+    </div>
+
+    <p>
+      中间件在缓存装饰<strong>之后</strong>执行，所以 <code>cache_control</code> 已经就位，
+      插件只管替换字符串，不新增内容块（不占新的断点位）。
+      间隔记录写在插件自己的 state 里（按 <code>session_id</code>），进程重启后仍然有效。
+    </p>
+    <p>
+      防误伤：<code>role=user</code> 但内容全是 <code>tool_result</code> 块（Claude 工具结果）的轮次直接跳过；
+      字符串与内容块数组两种形态都保持原有结构；任何异常静默降级，绝不影响对话。
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">09</span>已知边界</h2>
+    <p>
+      <strong>只影响发往模型的内容</strong>——终端里显示的仍是你的原文（这是设计，不是 bug）。
+      上下文压缩后的摘要轮同样会注入时间，这是期望行为。
+      时间格式使用本机时区的 IANA 名；Windows 上若没有 tzdata，会静默回退到 UTC+8。
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="https://github.com/" id="repo-link-2">GitHub 仓库</a> ·
+      <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> ·
+      Apache-2.0
+    </p>
+  </div>
+</footer>
+
+<script>
+  // 仓库地址集中一处：发到 GitHub 后只改这里（或直接改上面的链接）
+  (function () {
+    var REPO = "https://github.com/icefairy/hermes-time-context";
+    if (REPO.indexOf("<you>") === -1) {
+      document.getElementById("repo-link").href = REPO;
+      document.getElementById("repo-link-2").href = REPO;
+    }
+  })();
+</script>
+
+</body>
+</html>
